@@ -127,8 +127,9 @@ out.
 
 There is no separate account for this server: clients authenticate with the same
 username and password they use to log in to YAZIO, sent as HTTP Basic
-credentials. The server exchanges them for a YAZIO OAuth token on the first tool
-call and caches it per credential pair until it expires.
+credentials — or, if the client cannot build those, as [two plain
+headers](#without-the-base64-step). The server exchanges them for a YAZIO OAuth
+token on the first tool call and caches it per credential pair until it expires.
 
 ```jsonc
 {
@@ -148,6 +149,34 @@ call and caches it per credential pair until it expires.
 Basic auth is not what the MCP specification prescribes for HTTP transports — it
 expects OAuth — so clients have to be pointed at the server with an explicit
 header rather than through a discovery flow.
+
+### Without the base64 step
+
+Some clients — LibreChat among them — let an administrator define custom headers
+but pass the values through verbatim, so there is no way to have the client
+assemble the base64 credential from a username and a password. For those, send
+the two values as separate headers instead:
+
+```jsonc
+{
+  "mcpServers": {
+    "yazio": {
+      "type": "http",
+      "url": "http://127.0.0.1:8931/mcp",
+      "headers": {
+        "X-Auth-Username": "me@example.com",
+        "X-Auth-Password": "hunter2"
+      }
+    }
+  }
+}
+```
+
+The two forms are equivalent — the same login, the same token cache. When a
+request carries both, `Authorization` wins and the `X-Auth-*` headers are
+ignored. Sending only one half of the pair is refused with `400 Bad Request`,
+rather than the `401` an unauthenticated request gets, so a client that is only
+missing a field can tell that apart from credentials YAZIO turned down.
 
 Basic credentials are encoded, not encrypted. Bind to loopback, or terminate TLS
 in front of the server; never expose it over plain HTTP on a network you do not

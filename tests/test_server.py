@@ -138,6 +138,41 @@ async def test_well_formed_credentials_pass_the_gate():
 
 
 @pytest.mark.asyncio
+async def test_the_x_auth_pair_passes_the_gate():
+    """Clients that cannot build a Basic credential send the two plain headers."""
+    async with running_app() as client:
+        response = await client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            headers={
+                "X-Auth-Username": "me@example.com",
+                "X-Auth-Password": "hunter2",
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+            },
+        )
+
+    assert response.status_code != 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-Auth-Username": "me@example.com"},
+        {"X-Auth-Password": "hunter2"},
+    ],
+)
+async def test_half_an_x_auth_pair_is_refused_as_a_bad_request(headers):
+    async with running_app() as client:
+        response = await client.post("/mcp", json={}, headers=headers)
+
+    assert response.status_code == 400
+    # No challenge: the client did try, and resending the same pair cannot help.
+    assert "www-authenticate" not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_an_extra_allowed_host_is_accepted():
     """A server behind a proxy must accept the proxy's Host header."""
     app = build_app(["yazio.example.com"])
