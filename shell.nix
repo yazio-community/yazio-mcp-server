@@ -59,6 +59,5 @@ pkgs.mkShell {
     echo
     echo "  make run     start the server on 127.0.0.1:8931"
     echo "  make test    run the mocked test suite"
-    echo "  make smoke   drive the whole stack against a live account"
   '';
 }

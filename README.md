@@ -279,21 +279,11 @@ make lint
 alike. The dev shell pins one version of it (see `shell.nix`); keep that inside
 the range `pyproject.toml` declares when either moves.
 
-### Checking it against a live account
-
-The mocked suite is fast and covers the shaping logic, but it cannot catch the
-API contradicting the spec. `scripts/smoke_live.py` starts the real server and
-drives it as an MCP client — Basic auth, token exchange, SDK and shaping, end to
-end:
-
-```bash
-printf 'YAZIO_USERNAME=…\nYAZIO_PASSWORD=…\n' > .env   # gitignored
-nix-shell --run "make smoke"        # reads only
-nix-shell --run "make smoke-write"  # tracks one gram of olive oil, then removes it
-```
-
-If a *shape* looks wrong rather than the server's handling of it, the problem is
-upstream: use `scripts/probe_live.py` in the spec repo and fix it there.
+The suite mocks every HTTP call, so it covers the shaping logic but cannot catch
+the API contradicting the spec. If a *shape* looks wrong rather than the server's
+handling of it, the problem is upstream — reproduce it against the
+[spec repo](https://github.com/yazio-community/yazio-api-specification) and fix
+it there.
 
 ## Licence
 

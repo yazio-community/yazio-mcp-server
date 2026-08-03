@@ -1,4 +1,4 @@
-# Live YAZIO account credentials, used by scripts/smoke_live.py. Never commit.
+# Live YAZIO account credentials. Never commit.
 .env
 
 # Python
