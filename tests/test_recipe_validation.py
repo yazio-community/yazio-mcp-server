@@ -91,3 +91,52 @@ async def test_portion_count_is_declared_as_an_integer():
     schema = next(t for t in tools if t.name == "create_recipe").inputSchema
 
     assert schema["properties"]["portion_count"]["type"] == "integer"
+
+
+async def update(**overrides) -> str:
+    """Call update_recipe through the server and return the error it raises.
+
+    Like create()'s validation, the checks under test here run before any
+    network call, so an argument that passes them fails later on the absent
+    credentials instead of network mocking — never silently succeeding.
+    """
+    arguments = {"recipe_id": "some-id", **overrides}
+
+    with pytest.raises(ToolError) as raised:
+        await build_server().call_tool("update_recipe", arguments)
+
+    return str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_update_a_single_ingredient_is_refused():
+    assert "at least two ingredients" in await update(ingredients=[INGREDIENTS[0]])
+
+
+@pytest.mark.asyncio
+async def test_update_a_fractional_portion_count_is_refused():
+    assert "portion_count" in await update(portion_count=2.5)
+
+
+@pytest.mark.asyncio
+async def test_update_a_zero_portion_count_is_refused():
+    assert "greater than zero" in await update(portion_count=0)
+
+
+@pytest.mark.asyncio
+async def test_update_a_negative_portion_count_is_refused():
+    assert "greater than zero" in await update(portion_count=-2)
+
+
+@pytest.mark.asyncio
+async def test_update_a_blank_name_is_refused():
+    assert "needs a name" in await update(name="   ")
+
+
+@pytest.mark.asyncio
+async def test_update_with_no_changes_reaches_the_network():
+    """Omitting every optional argument is valid; it should not be refused here."""
+    message = await update()
+    assert "needs a name" not in message
+    assert "at least two ingredients" not in message
+    assert "greater than zero" not in message

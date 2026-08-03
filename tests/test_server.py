@@ -36,6 +36,7 @@ EXPECTED_TOOLS = {
     "track_product",
     "track_recipe",
     "untrack_item",
+    "update_recipe",
 }
 
 

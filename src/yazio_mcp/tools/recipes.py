@@ -1,10 +1,11 @@
-"""Reading and creating recipes.
+"""Reading, creating and updating recipes.
 
-Creating one is the only tool in this server that is more than a translation of
-an API call. YAZIO's recipe endpoint does not compute anything: the client is
-expected to submit the finished dish's nutrients alongside its ingredients. So
-create_recipe resolves every ingredient, scales its nutrients to the amount
-used, and sums them before posting.
+Creating and updating are the only tools in this server that are more than a
+translation of an API call. YAZIO's recipe endpoints do not compute anything:
+the client is expected to submit the finished dish's nutrients alongside its
+ingredients. So create_recipe resolves every ingredient, scales its nutrients
+to the amount used, and sums them before posting; update_recipe does the same
+when new ingredients are given, and otherwise resends what is already stored.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from yazio_sdk.api.recipes import delete_user_recipe as api_delete_user_recipe
 from yazio_sdk.api.recipes import get_recipe as api_get_recipe
 from yazio_sdk.api.recipes import list_favorite_recipes as api_list_favorite_recipes
 from yazio_sdk.api.recipes import list_user_recipes as api_list_user_recipes
+from yazio_sdk.api.recipes import update_user_recipe as api_update_user_recipe
 from yazio_sdk.models import RecipeDraft, RecipeDraftNutrients, RecipeDraftServingsItem
 
 from ..common import plain, round_floats
@@ -214,6 +216,118 @@ def register(mcp: FastMCP) -> None:
         )
 
     @mcp.tool()
+    async def update_recipe(
+        ctx: Context,
+        recipe_id: str,
+        name: str | None = None,
+        ingredients: list[dict[str, Any]] | None = None,
+        portion_count: int | None = None,
+        instructions: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Update one of this user's own recipes.
+
+        Only the arguments given are changed; anything omitted keeps its
+        current value. `ingredients`, if given, replaces the whole ingredient
+        list rather than patching it — see create_recipe for the expected
+        format, and the same two-ingredient minimum applies.
+
+        Args:
+            recipe_id: The recipe's UUID, from list_my_recipes.
+            name: New name for the recipe.
+            ingredients: Full replacement ingredient list, as in create_recipe.
+            portion_count: New portion count. Whole portions only.
+            instructions: Full replacement preparation steps, one per step.
+        """
+        if name is not None and not name.strip():
+            raise ToolError("a recipe needs a name")
+        if ingredients is not None and len(ingredients) < 2:
+            raise ToolError(
+                "YAZIO requires at least two ingredients in a recipe; "
+                f"got {len(ingredients)}. To log a single food, use track_product."
+            )
+        if portion_count is not None:
+            # A fractional portion_count is answered with a 500, not a
+            # validation error, so it has to be caught here.
+            if int(portion_count) != portion_count:
+                raise ToolError(
+                    f"portion_count must be a whole number of portions; got {portion_count}"
+                )
+            portion_count = int(portion_count)
+            if portion_count <= 0:
+                raise ToolError("portion_count must be greater than zero")
+
+        async with yazio_client(ctx) as client:
+            # YAZIO's update endpoint answers a foreign recipe id the same way
+            # it answers any other write, so this membership check is the only
+            # thing that turns "not yours" into an explanation rather than a
+            # bare status code.
+            response = await api_list_user_recipes.asyncio_detailed(client=client)
+            owned_ids = expect_ok(ctx, response, "list your recipes")
+            if recipe_id not in owned_ids:
+                raise ToolError(
+                    f"recipe {recipe_id} is not one of your own recipes, so it "
+                    "can't be updated. Only recipes you created can be edited "
+                    "— check list_my_recipes for the ids you own."
+                )
+
+            recipe = await _load_recipe(ctx, client, recipe_id)
+            if recipe is None:
+                raise ToolError(f"no recipe found with id {recipe_id}")
+
+            final_name = name.strip() if name is not None else (plain(recipe.name) or "")
+            final_portion_count = (
+                portion_count
+                if portion_count is not None
+                else int(plain(recipe.portion_count) or 1)
+            )
+            final_instructions = (
+                list(instructions)
+                if instructions is not None
+                else list(plain(recipe.instructions) or [])
+            )
+
+            if ingredients is not None:
+                resolved = await asyncio.gather(
+                    *(
+                        _resolve_ingredient(client, item, index)
+                        for index, item in enumerate(ingredients)
+                    )
+                )
+                total_nutrients = sum_nutrients([item["nutrients"] for item in resolved])
+                servings = [item["serving_entry"] for item in resolved]
+            else:
+                total_nutrients = plain(recipe.nutrients) or {}
+                servings = _draft_servings_from_recipe(recipe)
+
+            draft = RecipeDraft(
+                id=recipe_id,
+                name=final_name,
+                portion_count=final_portion_count,
+                instructions=final_instructions,
+                servings=servings,
+                nutrients=RecipeDraftNutrients.from_dict(total_nutrients),
+            )
+
+            response = await api_update_user_recipe.asyncio_detailed(
+                client=client, id=recipe_id, body=draft
+            )
+            expect_written(ctx, response, f"update the recipe '{final_name}'")
+
+        per_portion = scale_nutrients(total_nutrients, 1 / float(final_portion_count))
+
+        return round_floats(
+            {
+                "updated": True,
+                "recipe_id": recipe_id,
+                "name": final_name,
+                "portion_count": final_portion_count,
+                "instructions": final_instructions,
+                "nutrients_total": group_nutrients(total_nutrients),
+                "nutrients_per_portion": group_nutrients(per_portion),
+            }
+        )
+
+    @mcp.tool()
     async def delete_recipe(ctx: Context, recipe_id: str) -> dict[str, Any]:
         """Delete one of this user's own recipes.
 
@@ -325,6 +439,31 @@ async def _resolve_ingredient(
         "serving_entry": serving_entry,
         "nutrients": _nutrients_for_amount(product, resolved_amount),
     }
+
+
+def _draft_servings_from_recipe(recipe: Any) -> list[RecipeDraftServingsItem]:
+    """Rebuild a draft's servings list from an already-loaded recipe.
+
+    update_recipe uses this when called without new ingredients: the update
+    endpoint takes a full RecipeDraft, not a patch, so the existing servings
+    have to be resent unchanged alongside whatever did change.
+    """
+    servings = plain(recipe.servings) or []
+    entries = []
+    for item in servings:
+        entry = RecipeDraftServingsItem(
+            product_id=item.get("product_id") or "",
+            name=item.get("name") or "",
+            producer=item.get("producer") or "",
+            base_unit=item.get("base_unit") or "g",
+            amount=item.get("amount") or 0,
+        )
+        if item.get("serving") is not None:
+            entry.serving = str(item["serving"])
+        if item.get("serving_quantity") is not None:
+            entry.serving_quantity = float(item["serving_quantity"])
+        entries.append(entry)
+    return entries
 
 
 def _nutrients_for_amount(product: dict[str, Any], amount: float) -> dict[str, float]:
