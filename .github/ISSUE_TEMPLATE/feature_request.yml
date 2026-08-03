@@ -3,6 +3,7 @@ description: Suggest a new capability for the YAZIO MCP server.
 title: "[Feature]: "
 labels:
   - enhancement
+type: Feature
 body:
   - type: checkboxes
     id: duplicates

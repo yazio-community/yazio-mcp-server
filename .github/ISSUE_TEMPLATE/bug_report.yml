@@ -3,6 +3,7 @@ description: Report something the YAZIO MCP server gets wrong.
 title: "[Bug]: "
 labels:
   - bug
+type: Bug
 body:
   - type: checkboxes
     id: duplicates
