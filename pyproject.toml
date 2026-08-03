@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yazio-mcp-server"
-version = "0.2.0"
+version = "0.0.0.dev0"
 description = "An MCP server over the YAZIO food diary"
 readme = "README.md"
 requires-python = ">=3.10"

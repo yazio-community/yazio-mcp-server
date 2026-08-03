@@ -9,30 +9,7 @@ env:
   IMAGE: ${{ github.repository }}
 
 jobs:
-  # Its own job so it runs once and gates everything below it: a tag that
-  # disagrees with the version in pyproject.toml would publish an image labelled
-  # with a version it does not contain, and image tags are not retractable once
-  # someone has pulled. A release naming a version the tree does not claim is
-  # the same lie in a place people read more often.
-  check:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Check the tag matches the version in pyproject.toml
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          project=$(uv version --short)
-          if [ "$tag" != "$project" ]; then
-            echo "::error::tag v$tag does not match pyproject version $project"
-            exit 1
-          fi
-
   docker:
-    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,6 +21,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # The tree's own pyproject.toml carries a "0.0.0.dev0" placeholder — the
+      # tag is the single source of truth for a release version, so it is
+      # stamped into pyproject.toml here rather than kept in sync by hand.
+      # This edit lives only in the runner's checkout; nothing is committed
+      # back to the repository.
+      - uses: astral-sh/setup-uv@v5
+      - name: Set the version from the tag
+        run: uv version --frozen "${GITHUB_REF_NAME#v}"
 
       # arm64 as well as amd64: every dependency ships a musllinux wheel for
       # both, so this costs an emulated pip install rather than a compile.
