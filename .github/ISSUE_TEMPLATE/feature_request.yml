@@ -1,0 +1,57 @@
+name: Feature Request
+description: Suggest a new capability for the YAZIO MCP server.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Preflight
+      options:
+        - label: I have searched the existing issues and pull requests and did not find a similar feature request.
+          required: true
+
+  - type: textarea
+    id: requirement
+    attributes:
+      label: Requirement (EARS)
+      description: |
+        Describe the feature as one or more requirements in EARS (Easy Approach to Requirements Syntax).
+        Pick the pattern that fits and write one requirement per line:
+
+        - **Ubiquitous** — `The <system> shall <response>.`
+        - **Event-driven** — `When <trigger>, the <system> shall <response>.`
+        - **State-driven** — `While <state>, the <system> shall <response>.`
+        - **Optional feature** — `Where <feature is included>, the <system> shall <response>.`
+        - **Unwanted behaviour** — `If <condition>, then the <system> shall <response>.`
+        - **Complex** — combine the above, e.g. `While <state>, when <trigger>, the <system> shall <response>.`
+      value: |
+        When a user provides a product barcode, the YAZIO MCP server shall return the matching product with its nutritional values.
+        If no product matches the barcode, then the YAZIO MCP server shall return an empty result with an explanatory message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve? Describe the situation that led you to request it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you tried or considered, and why they fall short.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps — API references, screenshots, example tool calls.
+    validations:
+      required: false

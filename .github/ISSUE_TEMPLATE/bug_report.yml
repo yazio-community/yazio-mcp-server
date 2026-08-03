@@ -1,0 +1,103 @@
+name: Bug Report
+description: Report something the YAZIO MCP server gets wrong.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: checkboxes
+    id: duplicates
+    attributes:
+      label: Preflight
+      options:
+        - label: I have searched the existing issues and pull requests and did not find a similar bug report.
+          required: true
+        - label: I am on the latest release, or I have checked that the bug is still present there.
+          required: true
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A short, descriptive name for the bug. This is also a good value for the issue title.
+      placeholder: Logging a product returns the wrong meal slot
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected the server to do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead. Include the tool result or error message the model received.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The smallest sequence that triggers the bug. Name the tool and the arguments
+        you called it with, not just the prompt you gave the model.
+      value: |
+        1. Call `<tool>` with `{...}`
+        2. ...
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      description: The released version, image tag, or commit you are running.
+      placeholder: 0.1.0, latest, or a commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - Kubernetes
+        - Docker / Docker Compose
+        - From a checkout (nix-shell, make run)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: The client and version talking to the server.
+      placeholder: Claude Code 2.0.14, Claude Desktop, mcp-inspector
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant server output. Redact credentials — the server logs no passwords or
+        tokens by design, but check before pasting.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps — Python version, OS, whether it worked before.
+    validations:
+      required: false
