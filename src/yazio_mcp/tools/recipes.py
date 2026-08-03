@@ -1,4 +1,4 @@
-"""Reading, creating and updating recipes.
+"""Reading, creating, updating and photographing recipes.
 
 Creating and updating are the only tools in this server that are more than a
 translation of an API call. YAZIO's recipe endpoints do not compute anything:
@@ -11,19 +11,30 @@ when new ingredients are given, and otherwise resends what is already stored.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import uuid
+from io import BytesIO
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from yazio_sdk.api.content import list_featured_recipes as api_list_featured_recipes
+from yazio_sdk.api.recipes import add_user_recipe_image as api_add_user_recipe_image
 from yazio_sdk.api.recipes import create_user_recipe as api_create_user_recipe
 from yazio_sdk.api.recipes import delete_user_recipe as api_delete_user_recipe
+from yazio_sdk.api.recipes import delete_user_recipe_image as api_delete_user_recipe_image
 from yazio_sdk.api.recipes import get_recipe as api_get_recipe
 from yazio_sdk.api.recipes import list_favorite_recipes as api_list_favorite_recipes
 from yazio_sdk.api.recipes import list_user_recipes as api_list_user_recipes
 from yazio_sdk.api.recipes import update_user_recipe as api_update_user_recipe
-from yazio_sdk.models import RecipeDraft, RecipeDraftNutrients, RecipeDraftServingsItem
+from yazio_sdk.models import (
+    AddUserRecipeImageBody,
+    RecipeDraft,
+    RecipeDraftNutrients,
+    RecipeDraftServingsItem,
+)
+from yazio_sdk.types import File
 
 from ..common import plain, round_floats
 from ..nutrients import group_nutrients, scale_nutrients, sum_nutrients
@@ -353,12 +364,94 @@ def register(mcp: FastMCP) -> None:
             "name": plain(recipe.name),
         }
 
+    @mcp.tool()
+    async def set_recipe_photo(
+        ctx: Context, recipe_id: str, image_base64: str, extension: str = "jpg"
+    ) -> dict[str, Any]:
+        """Upload a photo for one of this user's own recipes.
+
+        Replaces any photo the recipe already has.
+
+        Args:
+            recipe_id: The recipe's UUID, from list_my_recipes.
+            image_base64: The photo's file contents, base64-encoded.
+            extension: The photo's file extension, such as "jpg", "png" or "webp".
+        """
+        try:
+            image_bytes = base64.b64decode(image_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ToolError(f"image_base64 is not valid base64: {exc}") from exc
+        if not image_bytes:
+            raise ToolError("image_base64 decoded to an empty file")
+
+        async with yazio_client(ctx) as client:
+            recipe = await _require_own_recipe(ctx, client, recipe_id)
+
+            # filename is never read back by YAZIO — only its extension ends up
+            # mattering — so a fresh uuid works just as well as the client's own,
+            # matching how create_recipe mints the recipe id itself.
+            filename = f"{uuid.uuid4()}.{extension.strip().lstrip('.').lower() or 'jpg'}"
+            body = AddUserRecipeImageBody(image=File(payload=BytesIO(image_bytes)))
+            response = await api_add_user_recipe_image.asyncio_detailed(
+                client=client, id=recipe_id, filename=filename, body=body
+            )
+            expect_written(ctx, response, f"upload a photo for recipe {recipe_id}")
+
+        return {
+            "updated": True,
+            "recipe_id": recipe_id,
+            "name": plain(recipe.name),
+        }
+
+    @mcp.tool()
+    async def delete_recipe_photo(ctx: Context, recipe_id: str) -> dict[str, Any]:
+        """Remove the photo from one of this user's own recipes.
+
+        Args:
+            recipe_id: The recipe's UUID, from list_my_recipes.
+        """
+        async with yazio_client(ctx) as client:
+            recipe = await _require_own_recipe(ctx, client, recipe_id)
+
+            response = await api_delete_user_recipe_image.asyncio_detailed(
+                client=client, id=recipe_id
+            )
+            expect_written(ctx, response, f"delete the photo for recipe {recipe_id}")
+
+        return {
+            "deleted": True,
+            "recipe_id": recipe_id,
+            "name": plain(recipe.name),
+        }
+
 
 async def _load_recipe(ctx: Context, client: Any, recipe_id: str) -> Any:
     response = await api_get_recipe.asyncio_detailed(client=client, id=recipe_id)
     if response.status_code == 404:
         return None
     return expect_ok(ctx, response, f"load recipe {recipe_id}")
+
+
+async def _require_own_recipe(ctx: Context, client: Any, recipe_id: str) -> Any:
+    """Load a recipe, refusing one that isn't this user's own.
+
+    YAZIO's photo endpoints answer a foreign recipe id the same way they answer
+    any other write, so this membership check is the only thing that turns
+    "not yours" into an explanation rather than a bare status code.
+    """
+    response = await api_list_user_recipes.asyncio_detailed(client=client)
+    owned_ids = expect_ok(ctx, response, "list your recipes")
+    if recipe_id not in owned_ids:
+        raise ToolError(
+            f"recipe {recipe_id} is not one of your own recipes, so its photo "
+            "can't be changed. Only recipes you created can be edited — check "
+            "list_my_recipes for the ids you own."
+        )
+
+    recipe = await _load_recipe(ctx, client, recipe_id)
+    if recipe is None:
+        raise ToolError(f"no recipe found with id {recipe_id}")
+    return recipe
 
 
 def _shape_recipe(recipe: Any, brief: bool) -> dict[str, Any]:

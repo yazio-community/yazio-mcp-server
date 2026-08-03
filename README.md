@@ -231,6 +231,8 @@ python3 -m yazio_mcp --host 0.0.0.0 --allowed-host yazio.example.com
 | `get_recipe` | One recipe: ingredients, instructions, nutrients per portion |
 | `create_recipe` | Build a recipe from tracked products |
 | `delete_recipe` | Remove one of the user's own recipes; logged portions stay |
+| `set_recipe_photo` | Upload a photo for one of the user's own recipes |
+| `delete_recipe_photo` | Remove the photo from one of the user's own recipes |
 | `browse_recipes` | YAZIO's editorial catalogue for a country |
 | `get_favorite_recipes` | Recipes marked as favourites |
 
