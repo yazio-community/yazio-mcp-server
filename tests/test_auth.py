@@ -9,7 +9,14 @@ import httpx
 import pytest
 import respx
 
-from yazio_mcp.auth import AuthError, Credentials, TokenCache, parse_basic_auth
+from yazio_mcp.auth import (
+    AuthError,
+    Credentials,
+    IncompleteCredentials,
+    TokenCache,
+    parse_basic_auth,
+    resolve_credentials,
+)
 from yazio_mcp.config import BASE_URL
 
 TOKEN_URL = f"{BASE_URL}/v22/oauth/token"
@@ -49,6 +56,66 @@ def test_accepts_a_lowercase_scheme():
 def test_rejects_unusable_headers(header):
     with pytest.raises(AuthError):
         parse_basic_auth(header)
+
+
+def test_resolves_an_authorization_header():
+    headers = {"authorization": basic("me@example.com", "hunter2")}
+    assert resolve_credentials(headers) == Credentials("me@example.com", "hunter2")
+
+
+def test_resolves_the_x_auth_pair():
+    headers = {"x-auth-username": "me@example.com", "x-auth-password": "hunter2"}
+    assert resolve_credentials(headers) == Credentials("me@example.com", "hunter2")
+
+
+def test_the_x_auth_pair_needs_no_encoding():
+    """The point of the pair: values that Basic would have mangled pass through."""
+    headers = {"x-auth-username": "me", "x-auth-password": "a:b:c"}
+    assert resolve_credentials(headers).password == "a:b:c"
+
+
+def test_authorization_wins_over_the_x_auth_pair():
+    headers = {
+        "authorization": basic("header", "pw"),
+        "x-auth-username": "ignored",
+        "x-auth-password": "ignored",
+    }
+    assert resolve_credentials(headers) == Credentials("header", "pw")
+
+
+def test_a_broken_authorization_header_is_not_rescued_by_the_x_auth_pair():
+    """Precedence is decided by presence, so a bad Basic header still fails."""
+    headers = {
+        "authorization": "Basic !!!",
+        "x-auth-username": "me",
+        "x-auth-password": "pw",
+    }
+    with pytest.raises(AuthError):
+        resolve_credentials(headers)
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"x-auth-username": "me"},
+        {"x-auth-password": "pw"},
+        # An empty value is no credential, so a blank half is still half a pair.
+        {"x-auth-username": "me", "x-auth-password": ""},
+        {"x-auth-username": "", "x-auth-password": "pw"},
+        {"x-auth-username": "", "x-auth-password": ""},
+    ],
+)
+def test_an_unusable_x_auth_pair_is_a_bad_request(headers):
+    with pytest.raises(IncompleteCredentials):
+        resolve_credentials(headers)
+
+
+def test_no_credentials_at_all_is_not_a_bad_request():
+    """Plain absence must stay a 401, so the client gets a challenge."""
+    with pytest.raises(AuthError) as raised:
+        resolve_credentials({})
+
+    assert not isinstance(raised.value, IncompleteCredentials)
 
 
 def test_cache_key_hides_the_password():

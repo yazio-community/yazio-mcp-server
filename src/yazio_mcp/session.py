@@ -25,7 +25,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from yazio_sdk import AuthenticatedClient
 from yazio_sdk.types import Response
 
-from .auth import AuthError, Credentials, TokenCache, parse_basic_auth
+from .auth import AuthError, Credentials, TokenCache, resolve_credentials
 from .config import BASE_URL, DEFAULT_HEADERS, HTTP_TIMEOUT
 
 T = TypeVar("T")
@@ -42,10 +42,10 @@ def credentials_from_context(ctx: Context) -> Credentials:
     if headers is None:
         raise AuthError(
             "no HTTP request on this MCP context; the server must be reached "
-            "over the streamable HTTP transport with Basic credentials"
+            "over the streamable HTTP transport with credential headers"
         )
 
-    return parse_basic_auth(headers.get("authorization"))
+    return resolve_credentials(headers)
 
 
 @asynccontextmanager
