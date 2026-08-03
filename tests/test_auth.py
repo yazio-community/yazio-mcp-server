@@ -99,17 +99,15 @@ def test_a_broken_authorization_header_is_not_rescued_by_the_x_auth_pair():
     [
         {"x-auth-username": "me"},
         {"x-auth-password": "pw"},
+        # An empty value is no credential, so a blank half is still half a pair.
+        {"x-auth-username": "me", "x-auth-password": ""},
+        {"x-auth-username": "", "x-auth-password": "pw"},
+        {"x-auth-username": "", "x-auth-password": ""},
     ],
 )
-def test_half_an_x_auth_pair_is_a_bad_request(headers):
+def test_an_unusable_x_auth_pair_is_a_bad_request(headers):
     with pytest.raises(IncompleteCredentials):
         resolve_credentials(headers)
-
-
-def test_an_empty_x_auth_value_still_counts_as_sent():
-    """A blank half is a complete pair YAZIO will reject, not a malformed request."""
-    headers = {"x-auth-username": "me", "x-auth-password": ""}
-    assert resolve_credentials(headers) == Credentials("me", "")
 
 
 def test_no_credentials_at_all_is_not_a_bad_request():

@@ -176,7 +176,9 @@ The two forms are equivalent — the same login, the same token cache. When a
 request carries both, `Authorization` wins and the `X-Auth-*` headers are
 ignored. Sending only one half of the pair is refused with `400 Bad Request`,
 rather than the `401` an unauthenticated request gets, so a client that is only
-missing a field can tell that apart from credentials YAZIO turned down.
+missing a field can tell that apart from credentials YAZIO turned down. A blank
+value is not a credential either: once one of the headers is on the request,
+both have to carry something or the request is a `400`.
 
 Basic credentials are encoded, not encrypted. Bind to loopback, or terminate TLS
 in front of the server; never expose it over plain HTTP on a network you do not

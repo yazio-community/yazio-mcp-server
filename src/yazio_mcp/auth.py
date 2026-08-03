@@ -106,8 +106,14 @@ def resolve_credentials(headers: Mapping[str, str | None]) -> Credentials:
         headers: The request headers, looked up in lower case. Any mapping whose
             `get` is case-insensitive (such as Starlette's) works too.
 
+    An empty header value is not a credential, so once either `X-Auth-*` header
+    is on the request both of them have to carry something. A client that wired
+    up the pair and left a field blank is told which half it still owes, rather
+    than having the blank forwarded to YAZIO as if it were a real credential.
+
     Raises:
-        IncompleteCredentials: if exactly one of the `X-Auth-*` headers is sent.
+        IncompleteCredentials: if an `X-Auth-*` header is present but the pair
+            does not amount to a username *and* a password.
         AuthError: if no credentials are present, or the `Authorization` header
             is not a well-formed Basic header.
     """
@@ -118,14 +124,18 @@ def resolve_credentials(headers: Mapping[str, str | None]) -> Credentials:
     username = headers.get(USERNAME_HEADER.lower())
     password = headers.get(PASSWORD_HEADER.lower())
 
-    if username is not None and password is not None:
+    if username and password:
         return Credentials(username=username, password=password)
 
     if username is not None or password is not None:
-        missing = PASSWORD_HEADER if username is not None else USERNAME_HEADER
+        blank = [
+            header
+            for header, value in ((USERNAME_HEADER, username), (PASSWORD_HEADER, password))
+            if not value
+        ]
         raise IncompleteCredentials(
-            f"{USERNAME_HEADER} and {PASSWORD_HEADER} must be sent together; "
-            f"{missing} is missing"
+            f"{USERNAME_HEADER} and {PASSWORD_HEADER} must both carry a value; "
+            f"missing or empty: {', '.join(blank)}"
         )
 
     raise AuthError(

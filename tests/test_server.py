@@ -161,9 +161,11 @@ async def test_the_x_auth_pair_passes_the_gate():
     [
         {"X-Auth-Username": "me@example.com"},
         {"X-Auth-Password": "hunter2"},
+        {"X-Auth-Username": "me@example.com", "X-Auth-Password": ""},
+        {"X-Auth-Username": "", "X-Auth-Password": ""},
     ],
 )
-async def test_half_an_x_auth_pair_is_refused_as_a_bad_request(headers):
+async def test_an_unusable_x_auth_pair_is_refused_as_a_bad_request(headers):
     async with running_app() as client:
         response = await client.post("/mcp", json={}, headers=headers)
 
