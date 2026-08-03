@@ -1,4 +1,4 @@
-name: docker
+name: release
 
 on:
   push:
@@ -9,7 +9,30 @@ env:
   IMAGE: ${{ github.repository }}
 
 jobs:
-  publish:
+  # Its own job so it runs once and gates everything below it: a tag that
+  # disagrees with the version in pyproject.toml would publish an image labelled
+  # with a version it does not contain, and image tags are not retractable once
+  # someone has pulled. A release naming a version the tree does not claim is
+  # the same lie in a place people read more often.
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check the tag matches the version in pyproject.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project=$(uv version --short)
+          if [ "$tag" != "$project" ]; then
+            echo "::error::tag v$tag does not match pyproject version $project"
+            exit 1
+          fi
+
+  docker:
+    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,19 +44,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      # Same guard as the PyPI workflow: a tag that disagrees with the version
-      # in pyproject.toml would publish an image labelled with a version it does
-      # not contain, and image tags are not retractable once someone has pulled.
-      - uses: astral-sh/setup-uv@v5
-      - name: Check the tag matches the version in pyproject.toml
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          project=$(uv version --short)
-          if [ "$tag" != "$project" ]; then
-            echo "::error::tag v$tag does not match pyproject version $project"
-            exit 1
-          fi
 
       # arm64 as well as amd64: every dependency ships a musllinux wheel for
       # both, so this costs an emulated pip install rather than a compile.
@@ -74,3 +84,28 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Last, because the release notes point people at an image that has to exist
+  # by the time they read them. A failed build leaves the tag without a release,
+  # which is the recoverable half: re-running the workflow finishes the job.
+  release:
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      # The only write this job needs: creating the release and its notes.
+      contents: write
+
+    steps:
+      # Full history, because the generated notes are a diff against the
+      # previous tag and a shallow clone has neither the tag nor the commits.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A tag with a pre-release suffix (v1.5.0-rc1) is marked as such, which
+      # keeps it out of the "latest release" slot on the repository page — the
+      # same line the tags above draw for the `latest` image tag.
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
