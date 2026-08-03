@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yazio-mcp-server"
+version = "0.1.0"
+description = "An MCP server over the YAZIO food diary"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "the yazio-community contributors" }]
+keywords = ["yazio", "mcp", "model-context-protocol", "nutrition", "food-diary"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+  # The generated client. Its version is the spec version it was generated from,
+  # and while that is still 0.x it is the minor that moves when a spec change
+  # renames or removes something this server imports — so the range is pinned to
+  # one minor rather than one major.
+  "yazio-sdk>=0.2.0,<0.3.0",
+  # Capped at the major: mcp 2.0 removed `mcp.server.fastmcp`, which is what
+  # server.py is built on. Without the cap a fresh install resolves to 2.x and
+  # fails at import — the dev shell hides this by pinning 1.27.
+  "mcp>=1.2,<2",
+  "starlette>=0.37",
+  "uvicorn>=0.30",
+]
+
+[project.scripts]
+yazio-mcp-server = "yazio_mcp.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/yazio-community/yazio-mcp-server"
+Specification = "https://github.com/yazio-community/yazio-api-specification"
+Issues = "https://github.com/yazio-community/yazio-mcp-server/issues"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "ruff>=0.6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yazio_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+
+# `ruff format` is deliberately not enforced here, and CI runs `ruff check`
+# only. This code is hand-formatted: line breaks line up with the comments that
+# explain them, and letting the formatter rejoin everything that now fits in 100
+# columns would rewrite a few hundred lines to no benefit. Run `ruff format` if
+# you like the result on a file you are already changing; nothing checks it.
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

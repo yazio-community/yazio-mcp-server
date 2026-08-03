@@ -1,0 +1,76 @@
+name: docker
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Pushing to GHCR under this repository's own namespace, so GITHUB_TOKEN
+      # is enough and there is no registry secret to keep.
+      packages: write
+      # Lets the build attach a signed provenance attestation to the image.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same guard as the PyPI workflow: a tag that disagrees with the version
+      # in pyproject.toml would publish an image labelled with a version it does
+      # not contain, and image tags are not retractable once someone has pulled.
+      - uses: astral-sh/setup-uv@v5
+      - name: Check the tag matches the version in pyproject.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project=$(uv version --short)
+          if [ "$tag" != "$project" ]; then
+            echo "::error::tag v$tag does not match pyproject version $project"
+            exit 1
+          fi
+
+      # arm64 as well as amd64: every dependency ships a musllinux wheel for
+      # both, so this costs an emulated pip install rather than a compile.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v1.4.2 publishes 1.4.2, 1.4 and 1, so a deployment can pin however
+      # tightly it wants; `latest` moves only for a final release, which keeps a
+      # v1.5.0-rc1 from becoming what an unpinned `docker run` gets.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0.') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.title=yazio-mcp-server
+            org.opencontainers.image.description=An MCP server over the YAZIO food diary
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

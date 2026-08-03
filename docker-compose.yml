@@ -1,0 +1,37 @@
+services:
+  yazio-mcp:
+    build: .
+    image: yazio-mcp-server:local
+    restart: unless-stopped
+
+    # `yazio-mcp:*` is what the DNS-rebinding guard needs in order to accept
+    # requests from other services on this network, which arrive with the
+    # compose service name in the Host header. Requests from the host machine
+    # through the published port below say `localhost:8931`, which is allowed
+    # without being named. Add further hostnames the same way.
+    command:
+      - yazio-mcp-server
+      - --host
+      - 0.0.0.0
+      - --allowed-host
+      - yazio-mcp:*
+
+    # Bound to loopback on purpose: clients authenticate with a reversibly
+    # encoded YAZIO username and password, so this must not be reachable over
+    # plain HTTP from anywhere but this machine. Put a TLS-terminating proxy in
+    # front of it before widening this, and name that proxy's hostname above.
+    ports:
+      - "127.0.0.1:8931:8931"
+
+    # A TCP check rather than an HTTP one: every path is behind Basic auth, so
+    # an unauthenticated GET would report 401 for a perfectly healthy server.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import socket; socket.create_connection(("127.0.0.1", 8931), 2).close()'
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3

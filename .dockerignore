@@ -1,0 +1,11 @@
+# The build context is pyproject.toml, README.md, LICENSE and src/ — everything
+# else only invalidates the layer cache.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+
+# Re-excluded inside src/, since the pattern above pulled the whole tree in.
+src/**/__pycache__/
+src/**/*.py[cod]

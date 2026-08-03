@@ -1,0 +1,27 @@
+# Live YAZIO account credentials, used by scripts/smoke_live.py. Never commit.
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+*.egg-info/
+
+# Nix
+result
+result-*
+.direnv/
+.envrc.local
+
+# Editors and OS
+.idea/
+.vscode/
+.zed/
+*.swp
+.DS_Store
+
+.claude/settings.local.json
